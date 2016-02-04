@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 class Patient:
@@ -54,7 +53,52 @@ class Patient:
             with open(filename, 'rb') as self.ecg_file:
                 print("Reading filename (header only): " + filename)
 
-                self._get_header_data()
+                self.magic_number = np.fromfile(
+                    self.ecg_file, dtype=np.dtype('a8'), count=1)[0]
+                self.checksum = np.fromfile(self.ecg_file, dtype=np.uint16, count=1)[0]
+                self.var_length_block_size = np.fromfile(
+                    self.ecg_file, dtype=np.int32, count=1)[0]
+                self.sample_size_ecg = np.fromfile(
+                    self.ecg_file, dtype=np.int32, count=1)[0]
+                self.offset_var_length_block = np.fromfile(
+                    self.ecg_file, dtype=np.int32, count=1)[0]
+                self.offset_ecg_block = np.fromfile(
+                    self.ecg_file, dtype=np.int32, count=1)[0]
+                self.file_version = np.fromfile(
+                    self.ecg_file, dtype=np.int16, count=1)[0]
+                self.first_name = np.fromfile(
+                    self.ecg_file, dtype=np.dtype('a40'), count=1)[0]
+                self.last_name = np.fromfile(
+                    self.ecg_file, dtype=np.dtype('a40'), count=1)[0]
+                self.ID = np.fromfile(self.ecg_file, dtype=np.dtype('a20'), count=1)[0]
+                self.sex = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
+                self.race = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
+                self.birth_date = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
+                self.record_date = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
+                self.file_date = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
+                self.start_time = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
+                self.n_leads = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
+                self.lead_spec = np.fromfile(self.ecg_file, dtype=np.int16, count=12)
+                self.lead_quality = np.fromfile(self.ecg_file, dtype=np.int16, count=12)
+                self.resolution = np.fromfile(self.ecg_file, dtype=np.int16, count=12)
+                self.pacemaker = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
+                self.recorder = np.fromfile(
+                    self.ecg_file, dtype=np.dtype('a40'), count=1)[0]
+                self.sampling_rate = np.fromfile(
+                    self.ecg_file, dtype=np.int16, count=1)[0]
+                self.proprietary = np.fromfile(
+                    self.ecg_file, dtype=np.dtype('a80'), count=1)[0]
+                self.copyright = np.fromfile(
+                    self.ecg_file, dtype=np.dtype('a80'), count=1)[0]
+                self.reserved = np.fromfile(
+                    self.ecg_file, dtype=np.dtype('a88'), count=1)[0]
+
+                # read variable length block
+                if self.var_length_block_size > 0:
+                    self.dt = np.dtype((str, self.var_length_block_size))
+                    self.var_block = np.fromfile(self.ecg_file, dtype=self.dt, count=1)[0]
+
+                self.samples_per_lead = self.sample_size_ecg / self.n_leads
 
         except IOError:
             print("File cannot be opened:", filename)
@@ -62,75 +106,79 @@ class Patient:
     def load_ecg_data(self, filename):
         """
         Open the ECG file and read the data
-        :param filename: path name of the file to read
+        :param self:
+        :param filename:
+        :return:
         """
 
         try:
-            with open(filename, 'rb')as self.ecg_file:
-                print("Reading filename (header and data): " + filename)
+            self.ecg_file = open(filename, 'rb')
+            print("Reading filename (header and data): " + filename)
 
-                self._get_header_data()
+            self.magic_number = np.fromfile(
+                self.ecg_file, dtype=np.dtype('a8'), count=1)[0]
+            self.checksum = np.fromfile(self.ecg_file, dtype=np.uint16, count=1)[0]
+            self.var_length_block_size = np.fromfile(
+                self.ecg_file, dtype=np.int32, count=1)[0]
+            self.sample_size_ecg = np.fromfile(
+                self.ecg_file, dtype=np.int32, count=1)[0]
+            self.offset_var_length_block = np.fromfile(
+                self.ecg_file, dtype=np.int32, count=1)[0]
+            self.offset_ecg_block = np.fromfile(
+                self.ecg_file, dtype=np.int32, count=1)[0]
+            self.file_version = np.fromfile(
+                self.ecg_file, dtype=np.int16, count=1)[0]
+            self.first_name = np.fromfile(
+                self.ecg_file, dtype=np.dtype('a40'), count=1)[0]
+            self.last_name = np.fromfile(
+                self.ecg_file, dtype=np.dtype('a40'), count=1)[0]
+            self.ID = np.fromfile(self.ecg_file, dtype=np.dtype('a20'), count=1)[0]
+            self.sex = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
+            self.race = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
+            self.birth_date = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
+            self.record_date = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
+            self.file_date = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
+            self.start_time = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
+            self.n_leads = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
+            self.lead_spec = np.fromfile(self.ecg_file, dtype=np.int16, count=12)
+            self.lead_quality = np.fromfile(self.ecg_file, dtype=np.int16, count=12)
+            self.resolution = np.fromfile(self.ecg_file, dtype=np.int16, count=12)
+            self.pacemaker = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
+            self.recorder = np.fromfile(
+                self.ecg_file, dtype=np.dtype('a40'), count=1)[0]
+            self.sampling_rate = np.fromfile(
+                self.ecg_file, dtype=np.int16, count=1)[0]
+            self.proprietary = np.fromfile(
+                self.ecg_file, dtype=np.dtype('a80'), count=1)[0]
+            self.copyright = np.fromfile(
+                self.ecg_file, dtype=np.dtype('a80'), count=1)[0]
+            self.reserved = np.fromfile(
+                self.ecg_file, dtype=np.dtype('a88'), count=1)[0]
 
-                # Set the datatype to load all of the samples in one chunk
-                ecg_dtype = np.dtype([('samples', np.int16, self.n_leads)])
-                self.ecg_data = np.fromfile(
-                    self.ecg_file, dtype=ecg_dtype, count=int(self.samples_per_lead))
+            # read variable length block
+            if self.var_length_block_size > 0:
+                self.dt = np.dtype((str, self.var_length_block_size))
+                self.var_block = np.fromfile(self.ecg_file, dtype=self.dt, count=1)[0]
+
+            # ECG data
+            self.samples_per_lead = self.sample_size_ecg / self.n_leads
+
+            ecg_dtype = np.dtype([('samples', np.int16, self.n_leads)])
+            self.ecg_data = np.fromfile(
+                self.ecg_file, dtype=ecg_dtype, count=int(self.samples_per_lead))
+            np.sort(self.ecg_data['samples'], axis=0, kind='quicksort')
+            print(self.ecg_data['samples'][1,2])
+            # for i in range(int(self.samples_per_lead)):
+            #    for j in range(self.n_leads):
+            #        self.ecg_data[j][i] = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
 
         except IOError:
             print("File cannot be opened:", filename)
 
-    def _get_header_data(self):
-        self.magic_number = np.fromfile(
-                self.ecg_file, dtype=np.dtype('a8'), count=1)[0]
-        self.checksum = np.fromfile(self.ecg_file, dtype=np.uint16, count=1)[0]
-        self.var_length_block_size = np.fromfile(
-            self.ecg_file, dtype=np.int32, count=1)[0]
-        self.sample_size_ecg = np.fromfile(
-            self.ecg_file, dtype=np.int32, count=1)[0]
-        self.offset_var_length_block = np.fromfile(
-            self.ecg_file, dtype=np.int32, count=1)[0]
-        self.offset_ecg_block = np.fromfile(
-            self.ecg_file, dtype=np.int32, count=1)[0]
-        self.file_version = np.fromfile(
-            self.ecg_file, dtype=np.int16, count=1)[0]
-        self.first_name = np.fromfile(
-            self.ecg_file, dtype=np.dtype('a40'), count=1)[0]
-        self.last_name = np.fromfile(
-            self.ecg_file, dtype=np.dtype('a40'), count=1)[0]
-        self.ID = np.fromfile(self.ecg_file, dtype=np.dtype('a20'), count=1)[0]
-        self.sex = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
-        self.race = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
-        self.birth_date = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
-        self.record_date = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
-        self.file_date = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
-        self.start_time = np.fromfile(self.ecg_file, dtype=np.int16, count=3)
-        self.n_leads = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
-        self.lead_spec = np.fromfile(self.ecg_file, dtype=np.int16, count=12)
-        self.lead_quality = np.fromfile(self.ecg_file, dtype=np.int16, count=12)
-        self.resolution = np.fromfile(self.ecg_file, dtype=np.int16, count=12)
-        self.pacemaker = np.fromfile(self.ecg_file, dtype=np.int16, count=1)[0]
-        self.recorder = np.fromfile(
-            self.ecg_file, dtype=np.dtype('a40'), count=1)[0]
-        self.sampling_rate = np.fromfile(
-            self.ecg_file, dtype=np.int16, count=1)[0]
-        self.proprietary = np.fromfile(
-            self.ecg_file, dtype=np.dtype('a80'), count=1)[0]
-        self.copyright = np.fromfile(
-            self.ecg_file, dtype=np.dtype('a80'), count=1)[0]
-        self.reserved = np.fromfile(
-            self.ecg_file, dtype=np.dtype('a88'), count=1)[0]
-        if self.var_length_block_size > 0:
-            self.dt = np.dtype((str, self.var_length_block_size))
-            self.var_block = np.fromfile(self.ecg_file, dtype=self.dt, count=1)[0]
-        self.samples_per_lead = self.sample_size_ecg / self.n_leads
-            
-    def plot_leads(self, leads=None, start_time=0, end_time=5):
-
+    def plot_leads(self, leads=None):
         """
         Plot the ecg leads (0 ordered!). Defaults to plot all of the leads
         :param leads: nothing (default to 1), integer of lead number, or list of ints
-        :param start_time: starting time to plot in seconds (default 0)
-        :param end_time: ending time to plot (default 5)
         """
         if leads is None:
             print("No lead number or list provided, defaulting to plot all...")
@@ -174,101 +222,9 @@ class Patient:
                 plt.title('ECG')
                 plt.xlabel('s')
                 plt.ylabel('mV')
-                plt.xlim(start_time,end_time)
-                plt.ylim(-1,1)
+                plt.xlim(0, 25)
+                plt.ylim(-1, 1)
                 plt.legend()
         plt.show()
 
-        return
-
-    def send_ecg_to_gpu(self, lead_number=None):
-        """
-        Compute a histogram on the ecg signal data
-        """
-        
-        if not lead_number:
-            print("Error in send_ecg_to_gpu(), please specify the \
-                   lead number to compute a histogram on")
-            return
-            
-        # Try to import the pycuda module
-        try:
-            import pycuda.driver as cuda
-            import pycuda.autoinit
-            from pycuda.compiler import SourceModule
-        except ImportError:
-            print("Error: send_ecg_to_gpu() Unable to import the pyCUDA package")
-            return
-            
-        module = SourceModule("""
-        __global__ void histogram(float* slope_buffer, unsigned char * pix, int total)
-        {
-          int idx = threadIdx.x + blockDim.x * blockIdx.x;
-          if(idx >= total) return;
-
-          __shared__ float local_hist[256];
-
-          if(threadIdx.x < 256)
-            local_hist[threadIdx.x] = 0;
-
-          __syncthreads();
-
-          int pixel = pix[idx];
-          atomicAdd((float *)&local_hist[pixel], 256.0/total);
-
-          if(threadIdx.x < 256)
-            atomicAdd((int*)&slope_buffer[threadIdx.x], local_hist[threadIdx.x]);
-        }
-        """)
-
-        histogram = module.get_function("histograms")
-
-    def compute_derivative_gpu(self, lead_number=None):
-        """ Compute the derivatives of a given lead signal
-        """
-        # Try to import the pycuda module
-        # try:
-            # import pycuda.driver as cuda
-            # import pycuda.autoinit
-            # from pycuda.compiler import SourceModule
-        # except ImportError:
-            # print("Error: compute_derivative_gpu() Unable to import the pyCUDA package")
-            # return
-            
-       
-        
-        y = self.ecg_data['samples'][:, lead_number] * (self.resolution[lead_number] / 1000000.0)
-        x = np.linspace(0, self.samples_per_lead / self.sampling_rate,
-                                num=self.samples_per_lead)
-                                
-                                
-        dx = np.diff(x)
-        #dxn = -np.diff(x)
-        df = np.diff(y)/dx
-        #threshold
-        #plt.plot(x, y, label='lead ' + str(lead_number))
-        
-        #s=np.sort(df)
-        #s0=s[0]*0.7
-        #np.negative()
-        #rr = np.zeros_like(s)
-        #rr=[int(x>s0) for x in s ]
-        plt.plot(x[:-1], df, label='df/dx ' + str(lead_number))
-        #plt.plot(x[:-1], s, label='df/dx ' + str(lead_number))
-        #plt.plot(x[:-1],rr, label='rr', marker='o')
-       
-        plt.title('ECG')
-        plt.xlabel('s')
-        plt.ylabel('mV')
-        plt.xlim(0,5)
-        #plt.ylim(-1,1)
-        plt.legend()
-        
-        
-        plt.show()
-       # for i, s in np.ndenumerate(df):
-        #    print(s)
-
-
-        
         return
