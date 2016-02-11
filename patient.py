@@ -45,7 +45,7 @@ class Patient:
         self.ecg_time_data = None
         self.ecg_data_loaded = False
         self.heart_rate = {}
-
+        self.lead_rr = {}
         return
 
     def load_ecg_header(self, filename):
@@ -92,6 +92,17 @@ class Patient:
                 self.active_leads = [i for i, x in enumerate(self.lead_spec) if x == 1]
                 self.ecg_time_data = np.linspace(0, self.samples_per_lead / self.sampling_rate,
                                                  num=self.samples_per_lead)
+
+                a = np.datetime64(str(self.record_date[2]) + '-' +
+                  '{0:02d}'.format(self.record_date[1]) + '-'+
+                  '{0:02d}'.format(self.record_date[0]) + 'T' +
+                  '{0:02d}'.format(self.start_time[0]) + ':' +
+                  str(self.start_time[1]) + ':00.000')
+
+                self.dt_datetime = np.arange(start=a,
+                               stop=a + np.timedelta64(int(self.samples_per_lead) * 5, 'ms'),
+                               step=np.timedelta64(5, 'ms'))
+
         except IOError:
             print("File cannot be opened:", filename)
 
@@ -368,16 +379,40 @@ class Patient:
         lead_voltage_gpu = gpuarray.to_gpu(lead_voltage[:-1])
         lead_voltage_gpu_shifted = gpuarray.to_gpu(lead_voltage[1:])
 
-        dfdx_gpu = gpuarray.empty(lead_voltage[1:].size, np.float32)
+        dfdx_gpu = gpuarray.zeros(lead_voltage[1:].size, np.float32)
         n = lead_voltage[1:].size
 
         # Device info
         gpu_dev = tools.DeviceData()
-        threads_per_block = gpu_dev.max_threads
+        threads_per_block = 512  # gpu_dev.max_threads
 
         # CUDA kernels
+
+        #with open('kernels.cu','r') as f:
+        #    module = SourceModule(f.read())
+
         module = SourceModule("""
+        #include <stdio.h>
         // Simple gpu kernel to compute the derivative with a constant dx
+        __global__ void derivative_shared(float* f, float* f_shifted, float* dfdx, float dx, int n)
+        {
+            unsigned int g_i = blockIdx.x * blockDim.x + threadIdx.x;
+            unsigned int s_i = threadIdx.x;
+
+            __shared__ float shared_dx;
+            __shared__ float shared_f[512];
+            __shared__ float shared_f_shifted[512];
+
+            // Assigned to shared memory
+            shared_dx = dx;
+            shared_f[s_i] = f[g_i];
+            shared_f_shifted[s_i] = f_shifted[g_i];
+
+            __syncthreads();
+
+            dfdx[g_i] = (shared_f_shifted[s_i] - shared_f[s_i]) / shared_dx;
+        }
+
         __global__ void derivative(float* f, float* f_shifted, float* dfdx, float dx, int n)
         {
             unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -385,28 +420,29 @@ class Patient:
         }
 
         // Filter out values that are not big enough (use for very large derivatives) i.e. large positive spikes
-        __global__ void get_only_large_deriv(float* f, bool* thresholded_f, float threshold)
+        __global__ void get_only_large_deriv(float* f, int* thresholded_f, float threshold)
         {
-            __shared__ int tf[1024];
+            __shared__ float shared_f[512];
+            __shared__ int   shared_thresholded_f[512];
+            __shared__ float shared_threshold;
 
-            unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-            unsigned int tid = threadIdx.x;
+            unsigned int g_i = blockIdx.x * blockDim.x + threadIdx.x;
+            unsigned int b_i = threadIdx.x;
 
-            tf[tid] = f[i];
+            // Put the threshold value into shared memory
+            shared_threshold = threshold;
 
-            tf[tid] = (tf[tid] >= threshold) ? 1 : 0;
+            // Put f into shared memory
+            shared_f[b_i] = f[g_i];
 
             __syncthreads();
 
-            thresholded_f[i] = tf[tid];
+            // 1 if at or above threshold, 0 if not
+            shared_thresholded_f[b_i] = (shared_f[b_i] >= shared_threshold) ? 1 : 0;
 
-        }
+            // Put threshold values into global memory
+            thresholded_f[g_i] = shared_thresholded_f[b_i];
 
-        // Filter out values that are not small enough (use for very small derivatives) i.e. large negative spikes
-        __global__ void get_only_small_deriv(float* f, bool* thresholded_f, float threshold)
-        {
-            unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-            thresholded_f[i] = (f[i] <= threshold) ? 1 : 0;
         }
         """)
 
@@ -417,7 +453,7 @@ class Patient:
 
 
         # Calculate the first derivative
-        derivative_kernel = module.get_function("derivative")
+        derivative_kernel = module.get_function("derivative_shared")
 
         print("Calling derivative kernel...")
         derivative_kernel(lead_voltage_gpu,
@@ -433,28 +469,32 @@ class Patient:
         max_dfdx = gpuarray.max(dfdx_gpu)
         # min_dfdx = gpuarray.min(dfdx_gpu)
 
-        threshold_value = thresh * max_dfdx
-
         print("Max dfdx", max_dfdx)
+
+        threshold_value = thresh * max_dfdx
         print("Using", threshold_value, "to threshold")
-        # Bool array (1 or 0) 1 means r spike, 0 means none
-        rr_bool_array = gpuarray.zeros(dfdx_gpu, dtype=np.bool_)
+
+        # binary array (1 or 0) 1 means r spike, 0 means none
+        rr_binary_array = gpuarray.empty(lead_voltage[1:].size, np.int)
 
         # Get the large positive derivative spikes
         threshold_kernel = module.get_function("get_only_large_deriv")
 
-        n_blocks = np.int_(np.ceil(lead_voltage[1:].size / threads_per_block))
+        #n_blocks = np.int_(np.ceil(lead_voltage[1:].size / threads_per_block))
 
         print("Calling threshold kernel...")
         threshold_kernel(dfdx_gpu,
-                         rr_bool_array,
-                         np.float32(threshold_value),
+                         rr_binary_array,
+                         threshold_value,
                          block=(threads_per_block, 1, 1),
                          grid=(n_blocks, 1, 1))
 
         # print('cumath.fabs', gpuarray.max(cumath.fabs(dfdx_gpu)))
         print("Done")
-        return rr_bool_array.get()
+
+        self.lead_rr[lead_number] = rr_binary_array.get()
+        np.savez('rr_lead' + str(lead_number) + '.npz', lead=lead_number, rr=self.lead_rr[lead_number])
+        # return rr_binary_array.get()
         # return dfdx_gpu.get()
 
     def save_lead_ecg_pickle(self, lead_number=None, filename=None):
